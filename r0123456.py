@@ -132,6 +132,48 @@ def cyclic_rtype_distance(permutation_1: np.ndarray, permutation_2: np.ndarray) 
 
     return count_non_shared_edges
 
+@jit(nopython=True, parallel=True)
+def k_tournament_selection (population: np.ndarray, fitness_values: np.ndarray, k:np.int64) -> np.ndarray:
+    """
+    Perform k-tournament selection on a population based on their fitness values.
+
+    Parameters:
+    - population (np.ndarray): 2D array representing the population, where each row is an individual.
+    - fitness_values (np.ndarray): 1D array containing the fitness values corresponding to each individual in the population.
+    - k (np.int64): The size of the tournament.
+
+    Returns:
+    - np.ndarray: 1D array representing the selected individual with the highest fitness in the tournament.
+
+    Tournament Selection Process:
+    Randomly select 'k' individuals from the population.
+    The individual with the highest fitness among the selected individuals is chosen as the winner.
+
+    Example:
+    Population:
+    [[1, 2, 3, 4, 5],
+     [6, 7, 8, 9, 10],
+     [11, 12, 13, 14, 15],
+     [16, 17, 18, 19, 20]]
+
+    Fitness Values: [20, 15, 18, 12]
+
+    Tournament Selection with k=3:
+    Randomly selected indices: [2, 0, 1]
+
+    Selected Individuals:
+    [[11, 12, 13, 14, 15],
+     [1, 2, 3, 4, 5],
+     [6, 7, 8, 9, 10]]
+
+    Winner: [11, 12, 13, 14, 15]
+    """
+
+    tournament_indices = np.random.choice(population.shape[0], k, replace=False)
+    winner_permutation = population[np.argmax(fitness_values[tournament_indices])]
+    
+    return winner_permutation
+
 # Modify the class name to match your student number.
 class r0713047:
     def __init__(self):
