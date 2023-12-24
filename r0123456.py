@@ -1,3 +1,8 @@
+"""
+TODO: Complete the implementation of the different recombination operators.
+TODO: Complete the implementation of the main optimization loop.
+"""
+
 import Reporter
 import numpy as np
 import random
@@ -173,6 +178,99 @@ def k_tournament_selection (population: np.ndarray, fitness_values: np.ndarray, 
     winner_permutation = population[np.argmax(fitness_values[tournament_indices])]
     
     return winner_permutation
+
+@jit(nopython=False)
+def inversion_mutation(distance_matrix: np.ndarray, permutation: np.ndarray, size: np.int64, alpha_: np.ndarray) -> np.ndarray:
+    """
+    Perform inversion mutation on a permutation array within a specified window.
+
+    Parameters:
+    - permutation (numpy.ndarray): The input permutation array.
+    - start (numpy.int64): The starting index of the mutation window.
+    - end (numpy.int64): The ending index of the mutation window.
+    - alpha_ (numpy.float64): The probability of performing the inversion mutation.
+
+    Returns:
+    - numpy.ndarray: The mutated permutation array.
+
+    ASCII Art Visualization:
+    
+    Original Permutation: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+    Mutation Window:      |-------[        ]--------|
+                              start        end
+
+    Mutation Process:
+    If random probability (alpha_) is met, a subset within the window is inverted.
+
+    Example:
+    Original Permutation: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    Mutation Window:      |-------[        ]--------|
+                            start           end
+
+    Subset to be inverted:         [4, 5, 6]
+
+    Mutated Permutation: [1, 2, 3, 6, 5, 4, 7, 8, 9]
+    """
+    n = distance_matrix.shape[0]
+    
+    if np.random.random() <= alpha_:
+        start_city = np.random.randint(0, n)
+        subset = np.take(permutation, indices=range(start_city, start_city + size), mode="wrap") # TODO the wrap option is not supported by numba
+        mutated_permutation = np.empty(permutation.size + size, dtype=np.int64)
+        concated_permutation = np.concatenate((permutation[:start_city], subset[::-1], permutation[start_city+size:]))
+                        
+        return mutated_permutation
+    
+@jit(nopython=True)
+def scramble_mutation(distance_matrix: np.ndarray, permutation: np.ndarray, alpha_: np.float64) -> np.ndarray:
+    """Scramble mutation: randomly choose 2 indices and scramble that subsequence."""   
+
+    if random.random() < alpha_:
+        i = random.randint(0, permutation.size - 1)
+        j = random.randint(0, permutation.size - 1)
+        if j < i:
+            i, j = j, i
+        new_order = np.copy(permutation)
+        np.random.shuffle(new_order[i:j])
+        return new_order
+
+    return permutation
+
+@jit(nopython=True)
+def k_point_crossover(parent_1: np.ndarray, parent_2: np.ndarray, k: np.int64) -> np.ndarray: #TODO
+    pass
+
+@jit(nopython=True)
+def uniform_crossover(parent_1: np.ndarray, parent_2: np.ndarray) -> np.ndarray:
+    """
+    https://en.wikipedia.org/wiki/Crossover_(genetic_algorithm)#:~:text=k%20crossover%20points.-,Uniform%20crossover,-%5Bedit%5D
+    """
+    assert len(parent1) == len(parent2)
+
+    child_genome = np.empty_like(parent1)
+
+    # Randomly select genes from each parent with equal probability
+    for i in range(len(parent1)):
+        child_genome[i] = np.random.choice([parent1[i], parent2[i]])
+
+    return child_genome
+
+@jit(nopython=True)
+def pmx_crossover(parent_1: np.ndarray, parent_2: np.ndarray) -> np.ndarray: #TODO
+    pass
+
+@jit(nopython=True)
+def ox1_crossover(parent_1: np.ndarray, parent_2: np.ndarray) -> np.ndarray: #TODO
+    pass
+
+@jit(nopython=True)
+def edge_assembly_crossover(parent_1: np.ndarray, parent_2: np.ndarray) -> np.ndarray: #TODO
+    pass
+
+@jit(nopython=True)
+def fitness_sharing(population: np.ndarray, fitness_values: np.ndarray, alpha_share_: np.float64, sigma_: np.float64) -> np.ndarray:
+    pass
 
 # Modify the class name to match your student number.
 class r0713047:
