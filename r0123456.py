@@ -46,6 +46,8 @@ def fitness(permutation: np.ndarray, distance_matrix: np.ndarray) -> float:
 
     return cost
 
+# Distance Functions
+
 @jit(nopython=True)
 def cyclic_edge_distance(permutation_1: np.ndarray, permutation_2: np.ndarray) -> np.int64:    
     """
@@ -137,6 +139,8 @@ def cyclic_rtype_distance(permutation_1: np.ndarray, permutation_2: np.ndarray) 
 
     return count_non_shared_edges
 
+# Selection Operators
+
 @jit(nopython=True, parallel=True)
 def k_tournament_selection (population: np.ndarray, fitness_values: np.ndarray, k:np.int64) -> np.ndarray:
     """
@@ -178,6 +182,8 @@ def k_tournament_selection (population: np.ndarray, fitness_values: np.ndarray, 
     winner_permutation = population[np.argmax(fitness_values[tournament_indices])]
     
     return winner_permutation
+
+# Mutation Operators
 
 @jit(nopython=False)
 def inversion_mutation(distance_matrix: np.ndarray, permutation: np.ndarray, size: np.int64, alpha_: np.ndarray) -> np.ndarray:
@@ -237,6 +243,8 @@ def scramble_mutation(distance_matrix: np.ndarray, permutation: np.ndarray, alph
 
     return permutation
 
+# Crossover Operators
+
 @jit(nopython=True)
 def k_point_crossover(parent_1: np.ndarray, parent_2: np.ndarray, k: np.int64) -> np.ndarray: #TODO
     pass
@@ -269,8 +277,36 @@ def edge_assembly_crossover(parent_1: np.ndarray, parent_2: np.ndarray) -> np.nd
     pass
 
 @jit(nopython=True)
-def fitness_sharing(population: np.ndarray, fitness_values: np.ndarray, alpha_share_: np.float64, sigma_: np.float64) -> np.ndarray:
+def fitness_sharing(fitness_values: np.ndarray, alpha_share_: np.float64, sigma_: np.float64, population: np.ndarray) -> np.ndarray:
     pass
+
+@jit(nopython=True)
+def two_opt_local_search(test):
+    pass
+
+# Elimination Operators
+
+@jit(nopython=True)
+def lambda_mu_elimination(population_and_offspring: np.ndarray, fitness_values: np.ndarray, shared_fitness_values: np.ndarray, lamda_: np.int64) -> np.ndarray:
+    """
+    Order the rows of the population_and_offspring matrix based on the corresponding values in the
+    shared_fitness_values array and return the top lamda_ rows along with their shared fitness values.
+
+    Parameters:
+    - population_and_offspring (numpy.ndarray): A 2D matrix representing the population and offspring.
+    - shared_fitness_values (numpy.ndarray): A 1D array containing shared fitness values corresponding to the rows.
+    - lamda_ (numpy.int64): The number of best values to keep.
+
+    Returns:
+    tuple: A tuple containing two elements:
+        - numpy.ndarray: The top lamda_ rows of the ordered population_and_offspring matrix.
+        - numpy.ndarray: The corresponding shared fitness values for the selected population.
+    """
+    sorted_indices = np.argsort(shared_fitness_values)
+    selected_population = population_and_offspring[sorted_indices][0:lamda_]
+    selected_fitness_values = fitness_values[sorted_indices][0:lamda_]
+
+    return selected_population, selected_fitness_values
 
 # Modify the class name to match your student number.
 class r0713047:
