@@ -1,18 +1,33 @@
+""" General Problem Description
+This file contains the implementation of an evolutionary algorithm for the Traveling Salesman Problem (TSP).
+A distance matrix is read from a tour[length].cvs file, where length is the number of cities in the problem.
+The distance matrix is a 2D array representing the distances between cities. Unreachable cities are represented
+by np.inf values. 
 """
+
+""" Still to Complete
 TODO: Complete the implementation of the different recombination operators.
 TODO: Complete the implementation of the main optimization loop.
 """
-
 import Reporter
 import numpy as np
-import random
-import matplotlib.pyplot as plt
-import time
+from numba import jit
+
+# Utility Functions 
+
+def rotate_0_up_front(order: np.ndarray) -> np.ndarray:
+    idx = np.where(order==0)
+    return np.concatenate([order[int(idx[0]):], order[0:int(idx[0])]]) 
+
+# Permutation fitness function
 
 @jit(nopython=True, parallel=False)
 def fitness(permutation: np.ndarray, distance_matrix: np.ndarray) -> float:
     """
     Calculate the cost of a permutation in the Traveling Salesman Problem.
+
+    First, the cache is checked for the cost of the given permutation.
+    If the cost is not cached, the cost is calculated, returned and cached.
 
     Checks for np.inf values during each iteration of the loop. 
     If an infinite distance is encountered, the cost is set to np.inf, 
@@ -29,10 +44,11 @@ def fitness(permutation: np.ndarray, distance_matrix: np.ndarray) -> float:
     Returns:
     - float: The cost of the given permutation.
     """
+    
 
     num_cities = distance_matrix.shape[0]
     cost = 0.0
-    for i in prange(num_cities - 1):
+    for i in range(num_cities - 1):
         from_city = permutation[i]
         to_city = permutation[i + 1]
 
@@ -49,7 +65,7 @@ def fitness(permutation: np.ndarray, distance_matrix: np.ndarray) -> float:
 # Distance Functions
 
 @jit(nopython=True)
-def cyclic_edge_distance(permutation_1: np.ndarray, permutation_2: np.ndarray) -> np.int64:    
+def cyclic_edge_distance(permutation_1: np.ndarray, permutation_2: np.ndarray) -> np.int64:
     """
     Calculates the cyclic edge distance between two permutations.
 
@@ -138,6 +154,33 @@ def cyclic_rtype_distance(permutation_1: np.ndarray, permutation_2: np.ndarray) 
             count_non_shared_edges += np.int64(1)
 
     return count_non_shared_edges
+
+# Initialization Operators
+
+@jit(nopython=True)
+def random_permutation(distance_matrix: np.ndarray) -> np.ndarray:
+    """
+    Generate a random permutation of cities.
+
+    Parameters:
+    - distance_matrix (np.ndarray): A 2D array representing the distances between cities.
+
+    Returns:
+    - np.ndarray: A 1D array representing a permutation of cities.
+    """
+
+    num_cities = distance_matrix.shape[0]
+    permutation = np.random.permutation(num_cities)
+
+    return permutation
+
+@jit(nopython=True)
+def random_correct_permutation_with_retries(distance_matrix: np.ndarray, attempts=5) -> np.ndarray: #TODO
+    pass
+        
+
+def initialize_population(distance_matrix: np.ndarray, lambda_: np.int64) -> np.int64: #TODO 
+    pass
 
 # Selection Operators
 
@@ -277,13 +320,25 @@ def edge_assembly_crossover(parent_1: np.ndarray, parent_2: np.ndarray) -> np.nd
     pass
 
 @jit(nopython=True)
-def fitness_sharing(fitness_values: np.ndarray, alpha_share_: np.float64, sigma_: np.float64, population: np.ndarray) -> np.ndarray:
+def fitness_sharing(fitness_values: np.ndarray, alpha_share_: np.float64, sigma_: np.float64, population: np.ndarray) -> np.ndarray: #TODO
     pass
 
 @jit(nopython=True)
-def two_opt_local_search(test):
-    pass
+def two_opt_local_search(permutation: np.ndarray, distance_matrix: np.ndarray) -> np.ndarray:
+    permutation_fitness = fitness(permutation, distance_matrix)
 
+    new_permutation = np.empty(distance_matrix.shape[0], dtype=np.int64)
+    new_permutation_fitness = np.inf
+    for a in range(-1, cities.shape[0]):
+        for b in range(a+1, cities.shape[0]):
+            candidate_permutation = permutation[:a] + permutation[a:b][::-1] + permutation[b:]
+            candidate_permutation_fitness = fitness(new_permutation, distance_matrix) 
+
+            if candidate_permutation_fitness < permutation_fitness:
+                new_permutation = candidate_permutation
+                new_permutation_fitness = candidate_permutation_fitness
+
+    return new_permutation
 # Elimination Operators
 
 @jit(nopython=True)
@@ -317,10 +372,13 @@ class r0713047:
     def optimize(self, filename):
         # Read distance matrix from file.
         file = open(filename)
-        distanceMatrix = np.loadtxt(file, delimiter=",")
+        distance_matrix = np.loadtxt(file, delimiter=",")
         file.close()
 
         # Your code here.
+
+        permutation = random_correct_permutation_with_retries(distance_matrix, 5)
+        print(fitness(permutation, distance_matrix))
 
         # Call the reporter with:
         #  - the mean objective function value of the population
@@ -339,4 +397,4 @@ class r0713047:
 
 if __name__ == "__main__":
     problem = r0713047()
-    problem.optimize("tours/tour50.csv")
+    problem.optimize("tours/tour1000.csv")
