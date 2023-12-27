@@ -22,7 +22,6 @@ import Reporter
 import numpy as np
 from numba import jit
 import time # For testing
-import random # For testing
 
 # Utility Functions 
 
@@ -37,7 +36,8 @@ def best(fitness_values: np.ndarray) -> np.float64:
 
 @jit(nopython=True)
 def mean(fitness_values: np.ndarray) -> np.float64:
-    return np.mean(fitness_values)
+    mask = np.isfinite(fitness_values)
+    return np.mean(fitness_values[mask])
 
 # Permutation fitness function
 
@@ -396,6 +396,8 @@ def inversion_mutation(permutation: np.ndarray, alpha_: np.ndarray, distance_mat
                         
         return mutated_permutation
     
+    return permutation
+
 @jit(nopython=True)
 def scramble_mutation(permutation: np.ndarray, alpha_: np.float64, distance_matrix: np.ndarray) -> np.ndarray:
     """Scramble mutation: randomly choose 2 indices and scramble that subsequence."""   
@@ -437,17 +439,27 @@ def pmx_crossover(parent_1: np.ndarray, parent_2: np.ndarray) -> np.ndarray: #TO
     pass
 
 @jit(nopython=True)
-def ox1_crossover(parent_1: np.ndarray, parent_2: np.ndarray) -> np.ndarray: #Testing
+def ox_crossover(parent_1: np.ndarray, parent_2: np.ndarray) -> np.ndarray: #Testing
+    """
+    A random subset of the parent_1 is copied to the child. The remaining positions are filled
+    with the values from parent_2 that are not already in the child. The values are copied from
+    parent_2 in the same order as they appear in parent_2.
+    This inplementation can also handle wrap-around, meaning that the subset can start at the
+    last index of parent_1 and wrap around to the first index.  
+    """
     assert parent_1.size == parent_2.size
 
-    i, j = np.random.choice(self.tour_length, 2, replace=False)
-    start, end = min(i, j), max(i, j)
-    
-    child = np.empty(nb_cities, dtype=np.int64) 
+    num_cities = parent_1.size
 
-    child[start:end] = parent_1[start:end]
-    child[end:] = np.array([i for i in parent_2 if i not in child[start:end]])
-    child[:start] = np.array([i for i in parent_2 if i not in child[start:end]])
+    start_idx = np.random.randint(0, num_cities)
+    size = np.random.randint(0, num_cities)
+
+    idx = np.arange(start_idx, start_idx + size)
+
+    child = np.full(num_cities , fill_value=-1)
+
+    child[idx % num_cities] = parent_1[idx % num_cities]
+    child[child == -1] = [i for i in parent_2 if i not in child]
 
     return child
 
@@ -455,9 +467,7 @@ def ox1_crossover(parent_1: np.ndarray, parent_2: np.ndarray) -> np.ndarray: #Te
 def edge_assembly_crossover(parent_1: np.ndarray, parent_2: np.ndarray) -> np.ndarray: #TODO
     pass
 
-@jit(nopython=True)
-def fitness_sharing(fitness_values: np.ndarray, alpha_share_: np.float64, sigma_: np.float64, population: np.ndarray) -> np.ndarray: #TODO
-    pass
+# Local Search Operators
 
 @jit(nopython=True)
 def two_opt_local_search(permutation: np.ndarray, distance_matrix: np.ndarray) -> np.ndarray:
@@ -488,6 +498,46 @@ def two_opt_local_search_pop(population: np.ndarray, distance_matrix: np.ndarray
 
     return new_population
 
+# Fitness Sharing
+
+@jit(nopython=True)
+def fitness_sharing(fitness_values: np.ndarray, 
+                    population: np.ndarray,
+                    shape_: np.float64, sigma_: np.float64) -> np.ndarray: #Testing
+    """
+    This inplementation leverages the fact that the cyclic r-type distance between two permutations
+    is symmetric. This means that the distance between permutation_1 and permutation_2 is the same and 
+    dist_matrix[i][j] equals dist_matrix[j][i].
+
+    population (numpy.ndarray): A 2D matrix representing the population and offspring.
+    fitness_values (numpy.ndarray): A 1D array containing the fitness values of the population and offspring.
+    """
+    
+    num_permutations = population.shape[0]
+
+    dist_matrix = np.empty((num_permutations, num_permutations), dtype=np.float64)
+    shared_fitness_values = np.empty(num_permutations, dtype=np.float64)
+
+    for i in np.arange(0, num_permutations):
+        for j in np.arange(0, num_permutations):
+
+            if j >= i: 
+                dist_matrix[i, j] = cyclic_rtype_distance(population[i], population[j])
+
+                if dist_matrix[i, j] <= sigma_:
+                    shared_fitness_values[i] = fitness_values[i]*(1 - (dist_matrix[i, j] / sigma_)**shape_)
+                else:
+                    shared_fitness_values[i] = fitness_values[i]
+
+            else:
+                if dist_matrix[j, i] <= sigma_:
+                    shared_fitness_values[i] = fitness_values[i]*(1 - (dist_matrix[j, i] / sigma_)**shape_)
+                else:
+                    shared_fitness_values[i] = fitness_values[i]
+
+    print(shared_fitness_values)
+    return shared_fitness_values
+
 # Elimination Operators
 
 @jit(nopython=True)
@@ -507,6 +557,7 @@ def lambda_mu_elimination(population_and_offspring: np.ndarray, fitness_values: 
         - numpy.ndarray: The corresponding shared fitness values for the selected population.
     """
     sorted_indices = np.argsort(shared_fitness_values)
+
     selected_population = population_and_offspring[sorted_indices][0:lamda_]
     selected_fitness_values = fitness_values[sorted_indices][0:lamda_]
 
@@ -519,23 +570,25 @@ class r0713047:
 
     # The evolutionary algorithm's main loop
     def optimize(self, filename):
-        ################ PARAMETERS ################
-        lambda_                   = np.int64(15)
-        mu_                       = np.int64(15)
-        k_                        = np.int64(3)
-        mutation_alpha_           = np.float64(0.25)
-        fitness_sharing_alpha_    = np.float64(1)
-        fitness_sharing_sigma_    = np.float64(250)
-        ############################################
-
 
         # Read distance matrix from file.
         file = open(filename)
         distance_matrix = np.loadtxt(file, delimiter=",")
         file.close()
 
+        num_cities = distance_matrix.shape[0]
+
+        ################ PARAMETERS ################
+        lambda_                   = np.int64(100)
+        mu_                       = np.int64(50)
+        k_                        = np.int64(3)
+        mutation_alpha_           = np.float64(0.35)
+        fitness_sharing_sigma_    = np.float64(0.35*num_cities)
+        fitness_sharing_alpha_    = np.float64(1)
+        ############################################
+
         # initialize population
-        population = initialize_population(distance_matrix, 100)
+        population = initialize_population(distance_matrix, lambda_)
         population = two_opt_local_search_pop(population, distance_matrix)
 
         # Evaluate the fitness of the initial population.
@@ -547,39 +600,47 @@ class r0713047:
             offspring = np.empty((mu_, distance_matrix.shape[0]), dtype=np.int64)
             offspring_fitness_values = np.empty(mu_, dtype=np.float64)
             for i in np.arange(0, mu_):
-               # Select parents from the population
-                parent_1 = k_tournament_selection(population, fitness_values, 3)
-                parent_2 = k_tournament_selection(population, fitness_values, 3)
+                # Select parents from the population
+                print("Selecting parents")
+                parent_1 = k_tournament_selection(population, fitness_values, k_)
+                parent_2 = k_tournament_selection(population, fitness_values, k_)
 
                 # Perform crossover on the parents
-                child = order_crossover(parent_1, parent_2)
+                print("Performing crossover")
+                child = ox_crossover(parent_1, parent_2)
 
                 # Perform mutation on the child
-                child = inversion_mutation(child)
+                print("Performing mutation")
+                child = inversion_mutation(child, mutation_alpha_, distance_matrix)
 
                 # Add the child to the offspring
-                offpsinrg[i] = child
+                offspring[i] = child
 
                 # Evaluate the fitness of the child
                 offspring_fitness_values[i] = fitness(child, distance_matrix)
             
             # Combine the population and offspring
+            print("Combining population and offspring")
             population_and_offspring = np.concatenate((population, offspring))
             population_and_offspring_fitness_values = np.concatenate((fitness_values, offspring_fitness_values))
 
             # Perform fitness sharing on the combined population and offspring
-            shared_fitness_values = fitness_sharing(population_and_offspring_fitness_values, fitness_sharing_alpha_, fitness_sharing_sigma_, population_and_offspring)
+            print("Performing fitness sharing")
+            shared_fitness_values = fitness_sharing(population_and_offspring_fitness_values, population_and_offspring, fitness_sharing_alpha_, fitness_sharing_sigma_)
 
             # Select the best lambda_ individuals from the combined population and offspring according to their shared fitness values
+            print("Selecting best individuals")
             population, fitness_values = lambda_mu_elimination(population_and_offspring, fitness_values, shared_fitness_values, lambda_)
 
-            # Call the reporter with:
-            #  - the mean objective function value of the population
-            #  - the best objective function value of the population
-            #  - a 1D numpy array in the cycle notation containing the best solution
-            #    with city numbering starting from 0
+            # Report results
+            meanObjective = mean(fitness_values)
+            bestObjective = best(fitness_values)
+            bestSolution = rotate_0_up_front(population[0])
             timeLeft = self.reporter.report(meanObjective, bestObjective, bestSolution)
-            if timeLeft < 0:
+
+            assert bestObjective == fitness(bestSolution, distance_matrix)
+
+            if timeLeft < 2:
                 break
 
         # Your code here.
