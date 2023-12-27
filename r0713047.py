@@ -175,19 +175,76 @@ def random_permutation(distance_matrix: np.ndarray) -> np.ndarray:
     return permutation
 
 @jit(nopython=True)
-def valid_permutation(distance_matrix: np.ndarray, attempts=5) -> np.ndarray: #TODO
-    pass
+def valid_permutation(distance_matrix: np.ndarray) -> np.ndarray: #TODO
+    permutation = np.empty(distance_matrix.shape[0], dtype=np.int64)
+
+    attempts = 5
+    while attempts > 0:
+        permutation[0] = np.random.randint(0, distance_matrix.shape[0])
+        for i in range(1, distance_matrix.shape[0]):
+            
+            # get indices of neighbours 
+            neighbours = np.where(distance_matrix[permutation[i-1]] != np.inf)[0]
+
+            # remove already visited neighbours
+            neighbours = np.setdiff1d(neighbours, permutation[:i])
+
+            # check if no neighbours are left
+            if neighbours.size == 0:
+                break
+
+            # select random neighbour
+            permutation[i] = np.random.choice(neighbours)
+
+            # check if last city is connected to first city
+            if i == distance_matrix.shape[0] - 1:
+                distance = distance_matrix[permutation[i-1], permutation[0]]
+                if distance == np.inf:
+                    break
+
+        return permutation
+
+    # Last resort: return random permutation
+    return np.random.permutation(distance_matrix.shape[0])
 
 @jit(nopython=True)
 def greedy_permutation(distance_matrix: np.ndarray) -> np.ndarray:
-    pass
+    
+    permutation = np.empty(distance_matrix.shape[0], dtype=np.int64)
+
+    attempts = 5
+    while attempts > 0:
+        permutation[0] = np.random.randint(0, distance_matrix.shape[0])
+        for i in range(1, distance_matrix.shape[0]):
+            
+            # get indices of neighbours 
+            neighbours = np.where(distance_matrix[permutation[i-1]] != np.inf)[0]
+
+            # remove already visited neighbours
+            neighbours = np.setdiff1d(neighbours, permutation[:i])
+
+            if neighbours.size == 0:
+                break
+
+            if i == distance_matrix.shape[0] - 1:
+                distance = distance_matrix[permutation[i-1], permutation[0]]
+                if distance == np.inf:
+                    break
+
+            # Select neighbour with lowest distance
+            permutation[i] = np.argmin(distance_matrix[permutation[i-1], neighbours])
+
+        return permutation
+
+    # Last resort: return random permutation
+    return np.random.permutation(distance_matrix.shape[0])
         
 @jit(nopython=True)
 def initialize_population(distance_matrix: np.ndarray, lambda_: np.int64) -> np.int64: #TODO 
     
     random_number = lambda_*0.05
-    greedy_number = lambda_*0.10
-    valid_number  = lambda_*0.85
+    greedy_number = lambda_*0.15
+    valid_number  = lambda_*0.80
 
     population = np.empty((lambda_, distance_matrix.shape[0]), dtype=np.int64)
     
