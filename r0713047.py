@@ -31,9 +31,17 @@ def rotate_0_up_front(permutation: np.ndarray) -> np.ndarray:
     idx = np.argmax(permutation == 0)
     return np.roll(permutation, -idx)
 
+@jit(nopython=True)
+def best(fitness_values: np.ndarray) -> np.float64:
+    return np.min(fitness_values)
+
+@jit(nopython=True)
+def mean(fitness_values: np.ndarray) -> np.float64:
+    return np.mean(fitness_values)
+
 # Permutation fitness function
 
-@jit(nopython=True, parallel=False)
+@jit(nopython=True)
 def fitness(permutation: np.ndarray, distance_matrix: np.ndarray) -> float:
     """
     Calculate the cost of a permutation in the Traveling Salesman Problem.
@@ -73,6 +81,17 @@ def fitness(permutation: np.ndarray, distance_matrix: np.ndarray) -> float:
     cost += distance_matrix[permutation[-1], permutation[0]]
 
     return cost
+
+@jit(nopython=True)
+def fitnesses(population: np.ndarray, distance_matrix: np.ndarray) -> np.ndarray:
+    pop_size = population.shape[0]
+
+    fitness_values = np.empty(pop_size, dtype=np.float64)
+
+    for i in np.arange(pop_size):
+        fitness_values[i] = fitness(population[i], distance_matrix)
+
+    return fitness_values
 
 # Distance Functions
 
@@ -330,7 +349,7 @@ def k_tournament_selection (population: np.ndarray, fitness_values: np.ndarray, 
 # Mutation Operators
 
 @jit(nopython=False)
-def inversion_mutation(permutation: np.ndarray, size: np.int64, alpha_: np.ndarray, distance_matrix: np.ndarray) -> np.ndarray:
+def inversion_mutation(permutation: np.ndarray, alpha_: np.ndarray, distance_matrix: np.ndarray) -> np.ndarray:
     """
     Perform inversion mutation on a permutation array within a specified window.
 
@@ -362,13 +381,18 @@ def inversion_mutation(permutation: np.ndarray, size: np.int64, alpha_: np.ndarr
 
     Mutated Permutation: [1, 2, 3, 6, 5, 4, 7, 8, 9]
     """
-    n = distance_matrix.shape[0]
     
     if np.random.random() <= alpha_:
-        start_city = np.random.randint(0, n)
-        subset = np.take(permutation, indices=range(start_city, start_city + size), mode="wrap") # TODO the wrap option is not supported by numba
-        mutated_permutation = np.empty(permutation.size + size, dtype=np.int64)
-        concated_permutation = np.concatenate((permutation[:start_city], subset[::-1], permutation[start_city+size:]))
+        num_cities = distance_matrix.shape[0]
+
+        start_idx = np.random.randint(0, num_cities)
+        size = np.random.randint(2, num_cities)
+
+        idx = np.arange(start_idx, start_idx + size)
+        subset = permutation[idx % num_cities]
+
+        mutated_permutation = permutation.copy()
+        mutated_permutation[idx % num_cities]  = subset[::-1]
                         
         return mutated_permutation
     
@@ -413,8 +437,19 @@ def pmx_crossover(parent_1: np.ndarray, parent_2: np.ndarray) -> np.ndarray: #TO
     pass
 
 @jit(nopython=True)
-def ox1_crossover(parent_1: np.ndarray, parent_2: np.ndarray) -> np.ndarray: #TODO
-    pass
+def ox1_crossover(parent_1: np.ndarray, parent_2: np.ndarray) -> np.ndarray: #Testing
+    assert parent_1.size == parent_2.size
+
+    i, j = np.random.choice(self.tour_length, 2, replace=False)
+    start, end = min(i, j), max(i, j)
+    
+    child = np.empty(nb_cities, dtype=np.int64) 
+
+    child[start:end] = parent_1[start:end]
+    child[end:] = np.array([i for i in parent_2 if i not in child[start:end]])
+    child[:start] = np.array([i for i in parent_2 if i not in child[start:end]])
+
+    return child
 
 @jit(nopython=True)
 def edge_assembly_crossover(parent_1: np.ndarray, parent_2: np.ndarray) -> np.ndarray: #TODO
@@ -441,6 +476,17 @@ def two_opt_local_search(permutation: np.ndarray, distance_matrix: np.ndarray) -
                 new_permutation_fitness = candidate_permutation_fitness
 
     return new_permutation
+
+@jit(nopython=True)
+def two_opt_local_search_pop(population: np.ndarray, distance_matrix: np.ndarray) -> np.ndarray:
+
+    new_population = np.empty_like(population)
+
+    for i in np.arange(0, population.shape[0]):
+        print(i)
+        new_population[i] = two_opt_local_search(population[i], distance_matrix)
+
+    return new_population
 
 # Elimination Operators
 
@@ -473,24 +519,68 @@ class r0713047:
 
     # The evolutionary algorithm's main loop
     def optimize(self, filename):
+        ################ PARAMETERS ################
+        lambda_                   = np.int64(15)
+        mu_                       = np.int64(15)
+        k_                        = np.int64(3)
+        mutation_alpha_           = np.float64(0.25)
+        fitness_sharing_alpha_    = np.float64(1)
+        fitness_sharing_sigma_    = np.float64(250)
+        ############################################
+
 
         # Read distance matrix from file.
         file = open(filename)
         distance_matrix = np.loadtxt(file, delimiter=",")
         file.close()
 
-        # Initialize the population.
-        # population = initialize_population(distance_matrix, 100)
+        # initialize population
+        population = initialize_population(distance_matrix, 100)
+        population = two_opt_local_search_pop(population, distance_matrix)
 
+        # Evaluate the fitness of the initial population.
+        fitness_values = fitnesses(population, distance_matrix)
 
-        # Call the reporter with:
-        #  - the mean objective function value of the population
-        #  - the best objective function value of the population
-        #  - a 1D numpy array in the cycle notation containing the best solution
-        #    with city numbering starting from 0
-        # timeLeft = self.reporter.report(meanObjective, bestObjective, bestSolution)
-        # if timeLeft < 0:
-        #     break
+        # Mainloop
+        while True: 
+        
+            offspring = np.empty((mu_, distance_matrix.shape[0]), dtype=np.int64)
+            offspring_fitness_values = np.empty(mu_, dtype=np.float64)
+            for i in np.arange(0, mu_):
+               # Select parents from the population
+                parent_1 = k_tournament_selection(population, fitness_values, 3)
+                parent_2 = k_tournament_selection(population, fitness_values, 3)
+
+                # Perform crossover on the parents
+                child = order_crossover(parent_1, parent_2)
+
+                # Perform mutation on the child
+                child = inversion_mutation(child)
+
+                # Add the child to the offspring
+                offpsinrg[i] = child
+
+                # Evaluate the fitness of the child
+                offspring_fitness_values[i] = fitness(child, distance_matrix)
+            
+            # Combine the population and offspring
+            population_and_offspring = np.concatenate((population, offspring))
+            population_and_offspring_fitness_values = np.concatenate((fitness_values, offspring_fitness_values))
+
+            # Perform fitness sharing on the combined population and offspring
+            shared_fitness_values = fitness_sharing(population_and_offspring_fitness_values, fitness_sharing_alpha_, fitness_sharing_sigma_, population_and_offspring)
+
+            # Select the best lambda_ individuals from the combined population and offspring according to their shared fitness values
+            population, fitness_values = lambda_mu_elimination(population_and_offspring, fitness_values, shared_fitness_values, lambda_)
+
+            # Call the reporter with:
+            #  - the mean objective function value of the population
+            #  - the best objective function value of the population
+            #  - a 1D numpy array in the cycle notation containing the best solution
+            #    with city numbering starting from 0
+            timeLeft = self.reporter.report(meanObjective, bestObjective, bestSolution)
+            if timeLeft < 0:
+                break
 
         # Your code here.
 
