@@ -9,15 +9,25 @@ by np.inf values.
 TODO: Complete the implementation of the different recombination operators.
 TODO: Complete the implementation of the main optimization loop.
 """
+
+""" Notes
+
+# Caching
+Testing showed that fitness_cached() is slower than fitness() for the given tour files.
+Even when using rotate_0_up_front() to reduce the number of permutations that need to be cached.
+This was mainly due to a low hit rate of the cache, for larger tour files (1000).
+Even when evaluating a 
+"""
 import Reporter
 import numpy as np
-from numba import jit
+from numba import jit, njit, prange, uint16, uint32, int32, bool_, float64, int64
 
 # Utility Functions 
 
-def rotate_0_up_front(order: np.ndarray) -> np.ndarray:
-    idx = np.where(order==0)
-    return np.concatenate([order[int(idx[0]):], order[0:int(idx[0])]]) 
+@jit(nopython=True)
+def rotate_0_up_front(permutation: np.ndarray) -> np.ndarray:
+    idx = np.argmax(permutation == 0)
+    return np.roll(permutation, -idx)
 
 # Permutation fitness function
 
@@ -172,25 +182,42 @@ def random_permutation(distance_matrix: np.ndarray) -> np.ndarray:
     num_cities = distance_matrix.shape[0]
     permutation = np.random.permutation(num_cities)
 
+    # print("random permutation")
+    # print(permutation)
     return permutation
 
 @jit(nopython=True)
-def valid_permutation(distance_matrix: np.ndarray) -> np.ndarray: #TODO
+def valid_permutation(distance_matrix: np.ndarray) -> np.ndarray: #Testing
     permutation = np.empty(distance_matrix.shape[0], dtype=np.int64)
+    cities = np.arange(distance_matrix.shape[0])
 
     attempts = 5
     while attempts > 0:
         permutation[0] = np.random.randint(0, distance_matrix.shape[0])
         for i in range(1, distance_matrix.shape[0]):
             
+            # print(permutation[i-1])
+            # print(distance_matrix[permutation[i-1]])
             # get indices of neighbours 
-            neighbours = np.where(distance_matrix[permutation[i-1]] != np.inf)[0]
+            neighbours_mask = np.isfinite(distance_matrix[permutation[i-1]])
 
+            # print(neighbours_mask)
+            # print(permutation[:i])
             # remove already visited neighbours
-            neighbours = np.setdiff1d(neighbours, permutation[:i])
+            neighbours_mask[permutation[:i]] = False
+
+            # print("neighbours_mask")
+            # print(neighbours_mask)
+
+            # randomly select neighbour from mask
+            neighbours = cities[neighbours_mask]
+
+            # print("neighbours")
+            # print(neighbours)
 
             # check if no neighbours are left
             if neighbours.size == 0:
+                # print("no neighbours left")
                 break
 
             # select random neighbour
@@ -200,70 +227,77 @@ def valid_permutation(distance_matrix: np.ndarray) -> np.ndarray: #TODO
             if i == distance_matrix.shape[0] - 1:
                 distance = distance_matrix[permutation[i-1], permutation[0]]
                 if distance == np.inf:
-                    break
+                    # print("last city not connected to first city")
+                    break 
 
+
+        # print("valid permutation")
+        # print(permutation)
         return permutation
 
     # Last resort: return random permutation
     return np.random.permutation(distance_matrix.shape[0])
 
 @jit(nopython=True)
-def greedy_permutation(distance_matrix: np.ndarray) -> np.ndarray:
-    
+def greedy_permutation(distance_matrix: np.ndarray) -> np.ndarray: #Testing
     permutation = np.empty(distance_matrix.shape[0], dtype=np.int64)
+    cities = np.arange(distance_matrix.shape[0])
 
     attempts = 5
     while attempts > 0:
         permutation[0] = np.random.randint(0, distance_matrix.shape[0])
         for i in range(1, distance_matrix.shape[0]):
             
-            # get indices of neighbours 
-            neighbours = np.where(distance_matrix[permutation[i-1]] != np.inf)[0]
+            prev_city = permutation[i-1]
 
-            # remove already visited neighbours
-            neighbours = np.setdiff1d(neighbours, permutation[:i])
+            neighbours_mask = np.isfinite(distance_matrix[prev_city])
+            neighbours_mask[permutation[:i]] = False
+            neighbours = cities[neighbours_mask]
 
             if neighbours.size == 0:
+                # print("no neighbours left")
                 break
+
+            neighbours_r_idx = np.argmin(distance_matrix[prev_city][neighbours])
+
+            permutation[i] = neighbours[neighbours_r_idx]
 
             if i == distance_matrix.shape[0] - 1:
                 distance = distance_matrix[permutation[i-1], permutation[0]]
                 if distance == np.inf:
+                    # print("last city not connected to first city")
                     break
-
-            # Select neighbour with lowest distance
-            permutation[i] = np.argmin(distance_matrix[permutation[i-1], neighbours])
-
+        
+        # print("greeedy permutation")
+        # print(permutation)
         return permutation
 
     # Last resort: return random permutation
     return np.random.permutation(distance_matrix.shape[0])
         
 @jit(nopython=True)
-def initialize_population(distance_matrix: np.ndarray, lambda_: np.int64) -> np.int64: #TODO 
+def initialize_population(distance_matrix: np.ndarray, lambda_: np.int64) -> np.int64: #Testing 
     
-    random_number = lambda_*0.05
-    greedy_number = lambda_*0.15
-    valid_number  = lambda_*0.80
+    random_number = int(lambda_*0.05)
+    greedy_number = int(lambda_*0.15)
+    valid_number  = int(lambda_*0.80)
+
+    assert(random_number + greedy_number + valid_number == lambda_)
 
     population = np.empty((lambda_, distance_matrix.shape[0]), dtype=np.int64)
     
-    indices = np.random.permutation(lambda_)
-    
-    for r in range(indices[:random_number]):
-        population[r] = random_permutation(distance_matrix)
-    
-    for g in range(indices[random_number:greedy_number]):
-        population[g] = greedy_permutation(distance_matrix)
+    idx = np.random.permutation(lambda_)
 
-    for v in range(indices[greedy_number:valid_number]):
-        population[v] = valid_permutation(distance_matrix)
+    for r in np.arange(0, random_number):
+        population[idx[r]] = random_permutation(distance_matrix)
+    
+    for g in np.arange(random_number, greedy_number):
+        population[idx[g]] = greedy_permutation(distance_matrix)
+
+    for v in np.arange(greedy_number, lambda_):
+        population[idx[v]] = valid_permutation(distance_matrix)
 
     return population
-
-
-    
-
 
 # Selection Operators
 
@@ -458,10 +492,17 @@ class r0713047:
         distance_matrix = np.loadtxt(file, delimiter=",")
         file.close()
 
-        # Your code here.
+        # Initialize the population.
+        population = initialize_population(distance_matrix, 100)
+        print("\n  population")
+        for i in range(population.shape[0]):
+            print(population[i])
 
-        permutation = random_correct_permutation_with_retries(distance_matrix, 5)
-        print(fitness(permutation, distance_matrix))
+        print("\n  fitness values")
+        for i in range(population.shape[0]):
+            pass
+            # print(population[i])
+            # print(fitness(population[i], distance_matrix))
 
         # Call the reporter with:
         #  - the mean objective function value of the population
@@ -480,4 +521,4 @@ class r0713047:
 
 if __name__ == "__main__":
     problem = r0713047()
-    problem.optimize("tours/tour1000.csv")
+    problem.optimize("tours/tour50.csv")
