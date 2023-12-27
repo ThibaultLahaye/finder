@@ -175,12 +175,38 @@ def random_permutation(distance_matrix: np.ndarray) -> np.ndarray:
     return permutation
 
 @jit(nopython=True)
-def random_correct_permutation_with_retries(distance_matrix: np.ndarray, attempts=5) -> np.ndarray: #TODO
+def valid_permutation(distance_matrix: np.ndarray, attempts=5) -> np.ndarray: #TODO
+    pass
+
+@jit(nopython=True)
+def greedy_permutation(distance_matrix: np.ndarray) -> np.ndarray:
     pass
         
-
+@jit(nopython=True)
 def initialize_population(distance_matrix: np.ndarray, lambda_: np.int64) -> np.int64: #TODO 
-    pass
+    
+    random_number = lambda_*0.05
+    greedy_number = lambda_*0.10
+    valid_number  = lambda_*0.85
+
+    population = np.empty((lambda_, distance_matrix.shape[0]), dtype=np.int64)
+    
+    indices = np.random.permutation(lambda_)
+    
+    for r in range(indices[:random_number]):
+        population[r] = random_permutation(distance_matrix)
+    
+    for g in range(indices[random_number:greedy_number]):
+        population[g] = greedy_permutation(distance_matrix)
+
+    for v in range(indices[greedy_number:valid_number]):
+        population[v] = valid_permutation(distance_matrix)
+
+    return population
+
+
+    
+
 
 # Selection Operators
 
