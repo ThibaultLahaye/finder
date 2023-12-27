@@ -182,8 +182,6 @@ def random_permutation(distance_matrix: np.ndarray) -> np.ndarray:
     num_cities = distance_matrix.shape[0]
     permutation = np.random.permutation(num_cities)
 
-    # print("random permutation")
-    # print(permutation)
     return permutation
 
 @jit(nopython=True)
@@ -191,51 +189,37 @@ def valid_permutation(distance_matrix: np.ndarray) -> np.ndarray: #Testing
     permutation = np.empty(distance_matrix.shape[0], dtype=np.int64)
     cities = np.arange(distance_matrix.shape[0])
 
-    attempts = 5
-    while attempts > 0:
+    attempts = 0
+    while attempts < 5:
+
         permutation[0] = np.random.randint(0, distance_matrix.shape[0])
         for i in range(1, distance_matrix.shape[0]):
             
-            # print(permutation[i-1])
-            # print(distance_matrix[permutation[i-1]])
-            # get indices of neighbours 
-            neighbours_mask = np.isfinite(distance_matrix[permutation[i-1]])
+            neighbours_mask = np.isfinite(distance_matrix[permutation[i-1]]) #
+            neighbours_mask[permutation[:i]] = False # 
+            neighbours = cities[neighbours_mask] # 
 
-            # print(neighbours_mask)
-            # print(permutation[:i])
-            # remove already visited neighbours
-            neighbours_mask[permutation[:i]] = False
-
-            # print("neighbours_mask")
-            # print(neighbours_mask)
-
-            # randomly select neighbour from mask
-            neighbours = cities[neighbours_mask]
-
-            # print("neighbours")
-            # print(neighbours)
-
-            # check if no neighbours are left
+            # check if no neighbours left
             if neighbours.size == 0:
-                # print("no neighbours left")
+                print("no neighbours left")
+                attempts += 1
                 break
 
-            # select random neighbour
-            permutation[i] = np.random.choice(neighbours)
+            permutation[i] = np.random.choice(neighbours) # select random neighbour
 
             # check if last city is connected to first city
             if i == distance_matrix.shape[0] - 1:
-                distance = distance_matrix[permutation[i-1], permutation[0]]
+                distance = distance_matrix[permutation[i], permutation[0]]
                 if distance == np.inf:
-                    # print("last city not connected to first city")
+                    print("last city not connected to first city")
+                    attempts += 1
                     break 
-
-
-        # print("valid permutation")
-        # print(permutation)
-        return permutation
+        
+        else: 
+            return permutation
 
     # Last resort: return random permutation
+    print("last resort")
     return np.random.permutation(distance_matrix.shape[0])
 
 @jit(nopython=True)
@@ -243,8 +227,8 @@ def greedy_permutation(distance_matrix: np.ndarray) -> np.ndarray: #Testing
     permutation = np.empty(distance_matrix.shape[0], dtype=np.int64)
     cities = np.arange(distance_matrix.shape[0])
 
-    attempts = 5
-    while attempts > 0:
+    attempts = 0
+    while attempts < 5:
         permutation[0] = np.random.randint(0, distance_matrix.shape[0])
         for i in range(1, distance_matrix.shape[0]):
             
@@ -255,7 +239,6 @@ def greedy_permutation(distance_matrix: np.ndarray) -> np.ndarray: #Testing
             neighbours = cities[neighbours_mask]
 
             if neighbours.size == 0:
-                # print("no neighbours left")
                 break
 
             neighbours_r_idx = np.argmin(distance_matrix[prev_city][neighbours])
@@ -263,16 +246,15 @@ def greedy_permutation(distance_matrix: np.ndarray) -> np.ndarray: #Testing
             permutation[i] = neighbours[neighbours_r_idx]
 
             if i == distance_matrix.shape[0] - 1:
-                distance = distance_matrix[permutation[i-1], permutation[0]]
+                distance = distance_matrix[permutation[i], permutation[0]]
                 if distance == np.inf:
-                    # print("last city not connected to first city")
                     break
         
-        # print("greeedy permutation")
-        # print(permutation)
-        return permutation
+        else: 
+            return permutation
 
     # Last resort: return random permutation
+    print("last resort")
     return np.random.permutation(distance_matrix.shape[0])
         
 @jit(nopython=True)
@@ -502,7 +484,7 @@ class r0713047:
         for i in range(population.shape[0]):
             pass
             # print(population[i])
-            # print(fitness(population[i], distance_matrix))
+            print(fitness(population[i], distance_matrix))
 
         # Call the reporter with:
         #  - the mean objective function value of the population
