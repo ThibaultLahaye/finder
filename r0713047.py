@@ -20,7 +20,9 @@ Even when evaluating a
 """
 import Reporter
 import numpy as np
-from numba import jit, njit, prange, uint16, uint32, int32, bool_, float64, int64
+from numba import jit
+import time # For testing
+import random # For testing
 
 # Utility Functions 
 
@@ -185,7 +187,7 @@ def random_permutation(distance_matrix: np.ndarray) -> np.ndarray:
     return permutation
 
 @jit(nopython=True)
-def valid_permutation(distance_matrix: np.ndarray) -> np.ndarray: #Testing
+def valid_permutation(distance_matrix: np.ndarray) -> np.ndarray:
     permutation = np.empty(distance_matrix.shape[0], dtype=np.int64)
     cities = np.arange(distance_matrix.shape[0])
 
@@ -223,7 +225,7 @@ def valid_permutation(distance_matrix: np.ndarray) -> np.ndarray: #Testing
     return np.random.permutation(distance_matrix.shape[0])
 
 @jit(nopython=True)
-def greedy_permutation(distance_matrix: np.ndarray) -> np.ndarray: #Testing
+def greedy_permutation(distance_matrix: np.ndarray) -> np.ndarray:
     permutation = np.empty(distance_matrix.shape[0], dtype=np.int64)
     cities = np.arange(distance_matrix.shape[0])
 
@@ -258,7 +260,7 @@ def greedy_permutation(distance_matrix: np.ndarray) -> np.ndarray: #Testing
     return np.random.permutation(distance_matrix.shape[0])
         
 @jit(nopython=True)
-def initialize_population(distance_matrix: np.ndarray, lambda_: np.int64) -> np.int64: #Testing 
+def initialize_population(distance_matrix: np.ndarray, lambda_: np.int64) -> np.int64: 
     
     random_number = int(lambda_*0.05)
     greedy_number = int(lambda_*0.15)
@@ -328,7 +330,7 @@ def k_tournament_selection (population: np.ndarray, fitness_values: np.ndarray, 
 # Mutation Operators
 
 @jit(nopython=False)
-def inversion_mutation(distance_matrix: np.ndarray, permutation: np.ndarray, size: np.int64, alpha_: np.ndarray) -> np.ndarray:
+def inversion_mutation(permutation: np.ndarray, size: np.int64, alpha_: np.ndarray, distance_matrix: np.ndarray) -> np.ndarray:
     """
     Perform inversion mutation on a permutation array within a specified window.
 
@@ -371,7 +373,7 @@ def inversion_mutation(distance_matrix: np.ndarray, permutation: np.ndarray, siz
         return mutated_permutation
     
 @jit(nopython=True)
-def scramble_mutation(distance_matrix: np.ndarray, permutation: np.ndarray, alpha_: np.float64) -> np.ndarray:
+def scramble_mutation(permutation: np.ndarray, alpha_: np.float64, distance_matrix: np.ndarray) -> np.ndarray:
     """Scramble mutation: randomly choose 2 indices and scramble that subsequence."""   
 
     if random.random() < alpha_:
@@ -424,20 +426,22 @@ def fitness_sharing(fitness_values: np.ndarray, alpha_share_: np.float64, sigma_
 
 @jit(nopython=True)
 def two_opt_local_search(permutation: np.ndarray, distance_matrix: np.ndarray) -> np.ndarray:
-    permutation_fitness = fitness(permutation, distance_matrix)
+    num_cities = distance_matrix.shape[0]
 
-    new_permutation = np.empty(distance_matrix.shape[0], dtype=np.int64)
-    new_permutation_fitness = np.inf
-    for a in range(-1, cities.shape[0]):
-        for b in range(a+1, cities.shape[0]):
-            candidate_permutation = permutation[:a] + permutation[a:b][::-1] + permutation[b:]
-            candidate_permutation_fitness = fitness(new_permutation, distance_matrix) 
+    new_permutation = permutation.copy()
+    new_permutation_fitness = fitness(permutation, distance_matrix)
 
-            if candidate_permutation_fitness < permutation_fitness:
+    for a in np.arange(0, num_cities):
+        for b in np.arange(a+1, num_cities):
+            candidate_permutation = np.concatenate((new_permutation[:a], new_permutation[a:b][::-1], new_permutation[b:]))
+            candidate_permutation_fitness = fitness(candidate_permutation, distance_matrix) 
+
+            if candidate_permutation_fitness < new_permutation_fitness:
                 new_permutation = candidate_permutation
                 new_permutation_fitness = candidate_permutation_fitness
 
     return new_permutation
+
 # Elimination Operators
 
 @jit(nopython=True)
@@ -469,22 +473,15 @@ class r0713047:
 
     # The evolutionary algorithm's main loop
     def optimize(self, filename):
+
         # Read distance matrix from file.
         file = open(filename)
         distance_matrix = np.loadtxt(file, delimiter=",")
         file.close()
 
         # Initialize the population.
-        population = initialize_population(distance_matrix, 100)
-        print("\n  population")
-        for i in range(population.shape[0]):
-            print(population[i])
+        # population = initialize_population(distance_matrix, 100)
 
-        print("\n  fitness values")
-        for i in range(population.shape[0]):
-            pass
-            # print(population[i])
-            print(fitness(population[i], distance_matrix))
 
         # Call the reporter with:
         #  - the mean objective function value of the population
