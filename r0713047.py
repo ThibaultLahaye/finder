@@ -31,13 +31,17 @@ def rotate_0_up_front(permutation: np.ndarray) -> np.ndarray:
     return np.roll(permutation, -idx)
 
 @jit(nopython=True)
-def best(fitness_values: np.ndarray) -> np.float64:
-    return np.min(fitness_values)
+def generate_report_values(population: np.ndarray, fitness_values: np.ndarray) -> np.ndarray:
+    
+    # Best fitness & Best permutation
+    min_idx = np.argmin(fitness_values)
+    best_fitness = fitness_values[min_idx]
+    best_permutation = rotate_0_up_front(population[min_idx])
 
-@jit(nopython=True)
-def mean(fitness_values: np.ndarray) -> np.float64:
-    mask = np.isfinite(fitness_values)
-    return np.mean(fitness_values[mask])
+    # Mean fitness
+    mean_fitness = np.mean(fitness_values)
+
+    return mean_fitness, best_fitness, best_permutation
 
 # Permutation fitness function
 
@@ -171,18 +175,17 @@ def cyclic_rtype_distance(permutation_1: np.ndarray, permutation_2: np.ndarray) 
 
     Author: Vincent A. Cicirello, https://www.cicirello.org/
     """
+    assert  permutation_1.size == permutation_2.size
 
-    count_non_shared_edges = np.int64(0)
-    
-    # successors2 = np.empty_like(p2)
-    # for i in range(successors2.size):
-    #     successors2[p2[i]] = p2[(i + 1) % successors2.size]
-    successors2 = np.roll(permutation_2, -1)
+    count_non_shared_edges = 0
+    successors_2 = np.empty_like(permutation_2)
 
-    for i in range(successors2.size):
-        j = (i + 1) % successors2.size
-        if permutation_1[(i + 1) % successors2.size] != successors2[permutation_1[i]]:
-            count_non_shared_edges += np.int64(1)
+    for i in range(len(successors_2)):
+        successors_2[permutation_2[i]] = permutation_2[(i + 1) % len(successors_2)]
+
+    for i in range(len(successors_2)):
+        if permutation_1[(i + 1) % len(successors_2)] != successors_2[permutation_1[i]]:
+            count_non_shared_edges += 1
 
     return count_non_shared_edges
 
@@ -493,7 +496,6 @@ def two_opt_local_search_pop(population: np.ndarray, distance_matrix: np.ndarray
     new_population = np.empty_like(population)
 
     for i in np.arange(0, population.shape[0]):
-        print(i)
         new_population[i] = two_opt_local_search(population[i], distance_matrix)
 
     return new_population
@@ -516,7 +518,7 @@ def fitness_sharing(fitness_values: np.ndarray,
     num_permutations = population.shape[0]
 
     dist_matrix = np.empty((num_permutations, num_permutations), dtype=np.float64)
-    shared_fitness_values = np.empty(num_permutations, dtype=np.float64)
+    shared_fitness_values = fitness_values.copy()
 
     for i in np.arange(0, num_permutations):
         for j in np.arange(0, num_permutations):
@@ -525,17 +527,13 @@ def fitness_sharing(fitness_values: np.ndarray,
                 dist_matrix[i, j] = cyclic_rtype_distance(population[i], population[j])
 
                 if dist_matrix[i, j] <= sigma_:
-                    shared_fitness_values[i] = fitness_values[i]*(1 - (dist_matrix[i, j] / sigma_)**shape_)
-                else:
-                    shared_fitness_values[i] = fitness_values[i]
+                    shared_fitness_values[i] += fitness_values[i]*(1 - (dist_matrix[i, j] / sigma_)**shape_)
 
             else:
                 if dist_matrix[j, i] <= sigma_:
-                    shared_fitness_values[i] = fitness_values[i]*(1 - (dist_matrix[j, i] / sigma_)**shape_)
-                else:
-                    shared_fitness_values[i] = fitness_values[i]
+                    shared_fitness_values[i] += fitness_values[i]*(1 - (dist_matrix[j, i] / sigma_)**shape_)
 
-    print(shared_fitness_values)
+
     return shared_fitness_values
 
 # Elimination Operators
@@ -558,8 +556,8 @@ def lambda_mu_elimination(population_and_offspring: np.ndarray, fitness_values: 
     """
     sorted_indices = np.argsort(shared_fitness_values)
 
-    selected_population = population_and_offspring[sorted_indices][0:lamda_]
-    selected_fitness_values = fitness_values[sorted_indices][0:lamda_]
+    selected_population = population_and_offspring[sorted_indices][:lamda_]
+    selected_fitness_values = fitness_values[sorted_indices][:lamda_]
 
     return selected_population, selected_fitness_values
 
@@ -601,16 +599,13 @@ class r0713047:
             offspring_fitness_values = np.empty(mu_, dtype=np.float64)
             for i in np.arange(0, mu_):
                 # Select parents from the population
-                print("Selecting parents")
                 parent_1 = k_tournament_selection(population, fitness_values, k_)
                 parent_2 = k_tournament_selection(population, fitness_values, k_)
 
                 # Perform crossover on the parents
-                print("Performing crossover")
                 child = ox_crossover(parent_1, parent_2)
 
                 # Perform mutation on the child
-                print("Performing mutation")
                 child = inversion_mutation(child, mutation_alpha_, distance_matrix)
 
                 # Add the child to the offspring
@@ -620,32 +615,23 @@ class r0713047:
                 offspring_fitness_values[i] = fitness(child, distance_matrix)
             
             # Combine the population and offspring
-            print("Combining population and offspring")
-            population_and_offspring = np.concatenate((population, offspring))
-            population_and_offspring_fitness_values = np.concatenate((fitness_values, offspring_fitness_values))
+            population_and_offspring = np.concatenate((population, offspring), dtype=np.int64)
+            population_and_offspring_fitness_values = np.concatenate((fitness_values, offspring_fitness_values), dtype=np.float64)
 
             # Perform fitness sharing on the combined population and offspring
-            print("Performing fitness sharing")
             shared_fitness_values = fitness_sharing(population_and_offspring_fitness_values, population_and_offspring, fitness_sharing_alpha_, fitness_sharing_sigma_)
 
             # Select the best lambda_ individuals from the combined population and offspring according to their shared fitness values
-            print("Selecting best individuals")
-            population, fitness_values = lambda_mu_elimination(population_and_offspring, fitness_values, shared_fitness_values, lambda_)
+            population, fitness_values = lambda_mu_elimination(population_and_offspring, population_and_offspring_fitness_values, shared_fitness_values, lambda_)
 
             # Report results
-            meanObjective = mean(fitness_values)
-            bestObjective = best(fitness_values)
-            bestSolution = rotate_0_up_front(population[0])
-            timeLeft = self.reporter.report(meanObjective, bestObjective, bestSolution)
+            pop_mean_fitness, pop_best_fitness, pop_best_permutation = generate_report_values(population, fitness_values)
 
-            assert bestObjective == fitness(bestSolution, distance_matrix)
-
+            timeLeft = self.reporter.report(pop_mean_fitness, pop_best_fitness, pop_best_permutation)
             if timeLeft < 2:
                 break
 
         # Your code here.
-
-        # Plot results
 
         return 0
 
