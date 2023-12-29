@@ -1,5 +1,8 @@
 r0713047.csv
 main.py
+main-fit.py
+main-afterburner.py
+.idea/*
 
 # Created by https://www.toptal.com/developers/gitignore/api/windows,macos,linux,visualstudiocode,vim,emacs
 # Edit at https://www.toptal.com/developers/gitignore?templates=windows,macos,linux,visualstudiocode,vim,emacs

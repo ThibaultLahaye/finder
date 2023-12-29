@@ -2,9 +2,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 heuristics = dict()
-heuristics[50] = 2773
+heuristics[50] = 27723
 heuristics[100] = 90851
-heuristics[250] = 39745
+heuristics[200] = 39745
 heuristics[500] = 157034
 heuristics[750] = 197541
 heuristics[1000] = 195848
